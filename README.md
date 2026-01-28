@@ -1,6 +1,6 @@
 # Zurich Berechnungstechnik – Vertragswert Tool (Python GUI)
 
-![GUI Screenshot](docs/gui_screenshot.png)
+![GUI Screenshot](beispiel.png)
 
 
 Kleines Praxisprojekt, inspiriert durch Aufgaben aus der Berechnungstechnik:
