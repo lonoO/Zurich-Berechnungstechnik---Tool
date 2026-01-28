@@ -1,0 +1,7 @@
+vertragsnr;kundenname;jahreszins;monatsbeitrag;monatskosten;startbetrag;monate
+1;Max Mustermann;0.02;150;5;1000;12
+2;Erika Musterfrau;0.015;200;7.5;2500;12
+3;Sam Beispiel;0.01;120;4;500;24
+4;Max Mustermann;0.02;150;5;1000;12
+5;Erika Musterfrau;0.015;200;7.5;2500;12
+6;Sam Beispiel;0.01;120;4;500;24
