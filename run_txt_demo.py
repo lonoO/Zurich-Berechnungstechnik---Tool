@@ -7,103 +7,110 @@ from pathlib import Path
 # Importiert date, um das aktuelle Datum für den Brief zu erzeugen
 from datetime import date
 
-# Importiert das csv-Modul zum Einlesen und Schreiben von CSV/TXT-Dateien
+# Importiert csv zum Einlesen/Schreiben der Vertragsdaten und Ergebnisse
 import csv
 
+# Importiert tkinter für die GUI
+import tkinter as tk
 
-# Ermittelt das Verzeichnis, in dem diese Python-Datei liegt
-# Dadurch funktionieren relative Pfade unabhängig vom Startort
-BASE_DIR = Path(__file__).resolve().parent
-
-# Pfad zur Eingabedatei contracts.txt
-DATA_FILE = BASE_DIR / "contracts.txt"
-
-# Pfad zum Ausgabeordner
-OUT_DIR = BASE_DIR / "output"
-
-# Pfad zum Unterordner für die Briefe
-LETTERS_DIR = OUT_DIR / "letters"
+# Importiert filedialog/messagebox für Dateiauswahl und Meldungen
+from tkinter import filedialog, messagebox
 
 
 # -------------------------
 # Datenmodell
 # -------------------------
 
-# Definiert eine Datenklasse für einen Versicherungsvertrag
-# @dataclass erzeugt automatisch __init__, __repr__ etc.
+# Datenklasse für einen Vertrag (eine Zeile in der contracts.txt)
 @dataclass
 class Vertrag:
     vertragsnr: int        # Vertragsnummer
-    kundenname: str        # Name des Kunden
-    jahreszins: float      # Jahreszins (z. B. 0.02 = 2 %)
+    kundenname: str        # Kundenname
+    jahreszins: float      # Jahreszins als Dezimalzahl (z.B. 0.02 für 2%)
     monatsbeitrag: float   # Monatlicher Beitrag
     monatskosten: float    # Monatliche Kosten
-    startbetrag: float     # Anfangswert des Vertrags
-    monate: int            # Anzahl der Monate für die Berechnung
+    startbetrag: float     # Startwert
+    monate: int            # Anzahl Monate
 
 
 # -------------------------
-# Mathematische Funktionen
+# Mathe / Berechnung
 # -------------------------
 
-# Berechnet den Monatszins aus dem Jahreszins
+# Umrechnung Jahreszins -> Monatszins
 def monatszins(jahreszins: float) -> float:
+    # i = r / 12 (vereinfachtes Modell)
     return jahreszins / 12.0
 
 
-# Berechnet den nächsten Vertragswert auf Basis des aktuellen Werts
+# Update-Formel: Wert nach einem Monat
 def folgewert(v_t: float, beitrag: float, kosten: float, i: float) -> float:
-    # Nettozufluss = Beitrag minus Kosten
+    # Nettozufluss pro Monat
     netto = beitrag - kosten
 
-    # Formel: V_(t+1) = V_t * (1 + i) + Netto
-    return v_t * (1 + i) + netto
+    # V_{t+1} = V_t * (1+i) + netto
+    return v_t * (1.0 + i) + netto
 
 
-# Berechnet den kompletten Zeitplan der Vertragswerte
+# Zeitreihe (Monat 1..N) berechnen
 def berechne_zeitplan(v: Vertrag):
-    # Monatszins berechnen
     i = monatszins(v.jahreszins)
-
-    # Startwert setzen
     wert = v.startbetrag
-
-    # Liste für Monatswerte
     zeitplan = []
 
-    # Schleife über alle Monate
+    # Einfache Plausibilitätschecks (praxisnah)
+    if v.monate <= 0:
+        raise ValueError("Monate müssen > 0 sein.")
+    if v.startbetrag < 0:
+        raise ValueError("Startbetrag darf nicht negativ sein.")
+    if v.monatsbeitrag < 0 or v.monatskosten < 0:
+        raise ValueError("Beitrag/Kosten dürfen nicht negativ sein.")
+
     for m in range(1, v.monate + 1):
-        # Neuen Vertragswert berechnen
         wert = folgewert(wert, v.monatsbeitrag, v.monatskosten, i)
 
-        # Plausibilitätsprüfung: Vertragswert darf nicht negativ sein
         if wert < 0:
-            raise ValueError(f"Negativer Vertragswert bei Vertrag {v.vertragsnr}")
+            raise ValueError(f"Negativer Vertragswert bei Vertrag {v.vertragsnr} (Monat {m}).")
 
-        # Monat und Wert speichern
         zeitplan.append((m, round(wert, 2)))
 
-    # Zeitplan zurückgeben
     return zeitplan
 
 
 # -------------------------
-# Import der Vertragsdaten
+# Import / Export
 # -------------------------
 
-# Liest die Vertragsdaten aus einer TXT-Datei
+# Verträge aus TXT-Datei lesen
 def import_vertraege_txt(path: Path):
-    # Liste für alle Verträge
+    # Erwartete Header (muss exakt so heißen)
+    expected = ["vertragsnr", "kundenname", "jahreszins", "monatsbeitrag", "monatskosten", "startbetrag", "monate"]
     vertraege = []
 
-    # Öffnet die Datei im Lese-Modus
-    with path.open("r", encoding="utf-8") as f:
-        # DictReader liest jede Zeile als Dictionary (Header → Wert)
+    # utf-8-sig ist robust gegen UTF-8 BOM
+    with path.open("r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f, delimiter=";")
 
-        # Iteriert über alle Zeilen der Datei
+        if reader.fieldnames is None:
+            raise ValueError("Keine Header-Zeile gefunden (erste Zeile leer?).")
+
+        # Header normalisieren (Leerzeichen entfernen)
+        header = [h.strip() for h in reader.fieldnames]
+        reader.fieldnames = header
+
+        # Header prüfen
+        if header != expected:
+            raise ValueError(f"Header passt nicht.\nErwartet: {expected}\nBekommen: {header}")
+
         for row in reader:
-            # Erstellt ein Vertrag-Objekt aus der Zeile
+            # Werte trimmen
+            row = {k.strip(): (v.strip() if isinstance(v, str) else v) for k, v in row.items()}
+
+            # Leere Werte abfangen
+            for k in expected:
+                if row.get(k) in (None, ""):
+                    raise ValueError(f"Leerer Wert in Spalte '{k}' in Zeile: {row}")
+
             vertraege.append(
                 Vertrag(
                     vertragsnr=int(row["vertragsnr"]),
@@ -116,20 +123,13 @@ def import_vertraege_txt(path: Path):
                 )
             )
 
-    # Gibt die Liste der Verträge zurück
     return vertraege
 
 
-# -------------------------
-# Brief-Erstellung
-# -------------------------
-
-# Erstellt einen formellen Kundenbrief als Text
+# Brieftext erzeugen
 def erstelle_brief(v: Vertrag, endwert: float) -> str:
-    # Aktuelles Datum im deutschen Format
     heute = date.today().strftime("%d.%m.%Y")
 
-    # Rückgabe des vollständigen Brieftextes
     return (
         f"{heute}\n\n"
         f"Betreff: Vertragswertinformation – Vertrag {v.vertragsnr}\n\n"
@@ -141,50 +141,184 @@ def erstelle_brief(v: Vertrag, endwert: float) -> str:
     )
 
 
-# -------------------------
-# Hauptprogramm
-# -------------------------
+# Ergebnisse schreiben: CSV + Briefe
+def export_ergebnisse(vertraege, out_dir: Path):
+    out_dir.mkdir(parents=True, exist_ok=True)
+    letters_dir = out_dir / "letters"
+    letters_dir.mkdir(parents=True, exist_ok=True)
 
-def main():
-    # Erstellt den Ausgabeordner, falls er noch nicht existiert
-    OUT_DIR.mkdir(exist_ok=True)
+    results_path = out_dir / "results.csv"
 
-    # Erstellt den Briefe-Ordner inklusive Elternordner
-    LETTERS_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Importiert alle Verträge aus der TXT-Datei
-    vertraege = import_vertraege_txt(DATA_FILE)
-
-    # Öffnet die Ergebnisdatei zum Schreiben
-    with (OUT_DIR / "results.csv").open("w", newline="", encoding="utf-8") as f:
-        # CSV-Writer mit Semikolon als Trennzeichen
+    with results_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f, delimiter=";")
-
-        # Header der Ergebnisdatei
         writer.writerow(["vertragsnr", "kundenname", "endwert"])
 
-        # Verarbeitung jedes Vertrags
         for v in vertraege:
-            # Zeitplan berechnen
             zeitplan = berechne_zeitplan(v)
-
-            # Letzter Wert ist der Endwert
             endwert = zeitplan[-1][1]
+            writer.writerow([v.vertragsnr, v.kundenname, f"{endwert:.2f}"])
 
-            # Ergebnis in CSV schreiben
-            writer.writerow([v.vertragsnr, v.kundenname, endwert])
+            brief = erstelle_brief(v, endwert)
+            (letters_dir / f"brief_{v.vertragsnr}.txt").write_text(brief, encoding="utf-8")
 
-            # Kundenbrief erzeugen
+    return results_path, letters_dir
+
+
+# -------------------------
+# GUI
+# -------------------------
+
+class ZurichApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+
+        # Fenster-Setup
+        self.title("Zurich Berechnungstechnik – Vertragswert Tool")
+        self.geometry("920x520")
+
+        # Zustände
+        self.input_file: Path | None = None
+        self.out_dir: Path | None = None
+        self.vertraege = []
+
+        # Layout
+        self._build_ui()
+
+    def _build_ui(self):
+        # Oberer Bereich: Dateipfade
+        frame_top = tk.Frame(self)
+        frame_top.pack(fill="x", padx=12, pady=10)
+
+        # Eingabedatei Auswahl
+        tk.Label(frame_top, text="Input (contracts.txt):").grid(row=0, column=0, sticky="w")
+        self.lbl_input = tk.Label(frame_top, text="(keine Datei gewählt)", anchor="w")
+        self.lbl_input.grid(row=0, column=1, sticky="we", padx=8)
+
+        btn_input = tk.Button(frame_top, text="Datei wählen", command=self.choose_input)
+        btn_input.grid(row=0, column=2, padx=6)
+
+        # Output Ordner Auswahl
+        tk.Label(frame_top, text="Output Ordner:").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        self.lbl_out = tk.Label(frame_top, text="(kein Ordner gewählt)", anchor="w")
+        self.lbl_out.grid(row=1, column=1, sticky="we", padx=8, pady=(8, 0))
+
+        btn_out = tk.Button(frame_top, text="Ordner wählen", command=self.choose_out_dir)
+        btn_out.grid(row=1, column=2, padx=6, pady=(8, 0))
+
+        frame_top.grid_columnconfigure(1, weight=1)
+
+        # Buttons
+        frame_btns = tk.Frame(self)
+        frame_btns.pack(fill="x", padx=12)
+
+        self.btn_load = tk.Button(frame_btns, text="Daten laden", command=self.load_data)
+        self.btn_load.pack(side="left")
+
+        self.btn_run = tk.Button(frame_btns, text="Berechnen + Export", command=self.run_export, state="disabled")
+        self.btn_run.pack(side="left", padx=8)
+
+        self.btn_preview = tk.Button(frame_btns, text="Brief-Vorschau", command=self.preview_letter, state="disabled")
+        self.btn_preview.pack(side="left")
+
+        # Tabelle / Anzeige
+        frame_mid = tk.Frame(self)
+        frame_mid.pack(fill="both", expand=True, padx=12, pady=10)
+
+        tk.Label(frame_mid, text="Geladene Verträge (Vorschau):").pack(anchor="w")
+        self.txt_table = tk.Text(frame_mid, height=12)
+        self.txt_table.pack(fill="both", expand=True, pady=6)
+
+        # Log
+        tk.Label(self, text="Log:").pack(anchor="w", padx=12)
+        self.txt_log = tk.Text(self, height=6)
+        self.txt_log.pack(fill="x", padx=12, pady=(0, 10))
+
+    def log(self, msg: str):
+        self.txt_log.insert("end", msg + "\n")
+        self.txt_log.see("end")
+
+    def choose_input(self):
+        path = filedialog.askopenfilename(
+            title="contracts.txt auswählen",
+            filetypes=[("Text/CSV", "*.txt *.csv"), ("Alle Dateien", "*.*")]
+        )
+        if path:
+            self.input_file = Path(path)
+            self.lbl_input.config(text=str(self.input_file))
+            self.log(f"Input gesetzt: {self.input_file}")
+
+    def choose_out_dir(self):
+        path = filedialog.askdirectory(title="Output-Ordner auswählen")
+        if path:
+            self.out_dir = Path(path)
+            self.lbl_out.config(text=str(self.out_dir))
+            self.log(f"Output gesetzt: {self.out_dir}")
+
+    def load_data(self):
+        if not self.input_file:
+            messagebox.showerror("Fehler", "Bitte zuerst eine contracts.txt auswählen.")
+            return
+
+        try:
+            self.vertraege = import_vertraege_txt(self.input_file)
+            self._render_table(self.vertraege)
+            self.log(f"{len(self.vertraege)} Verträge geladen.")
+            self.btn_run.config(state="normal")
+            self.btn_preview.config(state="normal")
+        except Exception as e:
+            messagebox.showerror("Import-Fehler", str(e))
+            self.log(f"IMPORT FEHLER: {e}")
+
+    def _render_table(self, vertraege):
+        self.txt_table.delete("1.0", "end")
+        header = "vertragsnr | kundenname | jahreszins | monatsbeitrag | monatskosten | startbetrag | monate\n"
+        self.txt_table.insert("end", header)
+        self.txt_table.insert("end", "-" * 100 + "\n")
+        for v in vertraege:
+            line = f"{v.vertragsnr} | {v.kundenname} | {v.jahreszins} | {v.monatsbeitrag} | {v.monatskosten} | {v.startbetrag} | {v.monate}\n"
+            self.txt_table.insert("end", line)
+
+    def run_export(self):
+        if not self.vertraege:
+            messagebox.showerror("Fehler", "Keine Verträge geladen.")
+            return
+        if not self.out_dir:
+            messagebox.showerror("Fehler", "Bitte zuerst einen Output-Ordner auswählen.")
+            return
+
+        try:
+            results_path, letters_dir = export_ergebnisse(self.vertraege, self.out_dir)
+            self.log(f"Export OK: {results_path}")
+            self.log(f"Briefe OK: {letters_dir}")
+            messagebox.showinfo("Fertig", f"Ergebnisse: {results_path}\nBriefe: {letters_dir}")
+        except Exception as e:
+            messagebox.showerror("Berechnungs-/Export-Fehler", str(e))
+            self.log(f"EXPORT FEHLER: {e}")
+
+    def preview_letter(self):
+        if not self.vertraege:
+            messagebox.showerror("Fehler", "Bitte zuerst Daten laden.")
+            return
+
+        # Nimmt einfach den ersten Vertrag als Vorschau
+        v = self.vertraege[0]
+        try:
+            endwert = berechne_zeitplan(v)[-1][1]
             brief = erstelle_brief(v, endwert)
 
-            # Brief als TXT-Datei speichern
-            (LETTERS_DIR / f"brief_{v.vertragsnr}.txt").write_text(brief, encoding="utf-8")
+            win = tk.Toplevel(self)
+            win.title(f"Brief-Vorschau – Vertrag {v.vertragsnr}")
+            win.geometry("700x500")
 
-    # Abschlussmeldung
-    print("Fertig. Ergebnisse und Briefe erstellt.")
+            txt = tk.Text(win)
+            txt.pack(fill="both", expand=True)
+            txt.insert("end", brief)
+        except Exception as e:
+            messagebox.showerror("Vorschau-Fehler", str(e))
+            self.log(f"VORSCHAU FEHLER: {e}")
 
 
-# Startpunkt des Programms
-# Dieser Block wird nur ausgeführt, wenn das Skript direkt gestartet wird
+# Programmstart
 if __name__ == "__main__":
-    main()
+    app = ZurichApp()
+    app.mainloop()
