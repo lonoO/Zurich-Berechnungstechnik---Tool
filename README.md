@@ -1,6 +1,9 @@
 # Zurich Berechnungstechnik – Vertragswert Tool (Python GUI)
 
-Kleines Praxisprojekt (Werkstudenten-nah), inspiriert durch Aufgaben aus der Berechnungstechnik:
+![GUI Screenshot](docs/gui_screenshot.png)
+
+
+Kleines Praxisprojekt, inspiriert durch Aufgaben aus der Berechnungstechnik:
 - Import von Vertragsdaten aus einer TXT-Datei
 - Monatlich wiederkehrende Berechnung von Vertragswerten
 - Plausibilitätschecks
