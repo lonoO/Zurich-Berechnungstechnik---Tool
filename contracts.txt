@@ -4,3 +4,4 @@ vertragsnr;kundenname;jahreszins;monatsbeitrag;monatskosten;startbetrag;monate
 3;Sam Beispiel;0.01;120;4;500;24
 4;Simon Kaiser;0.06;300;5;10000;12
 5;Lasse Döhring;0.01;500;7.5;5000;12
+6;Anika Kochs;0.10;1000;5;10000;24

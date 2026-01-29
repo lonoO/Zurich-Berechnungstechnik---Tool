@@ -17,9 +17,9 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 
 
-# -------------------------
+
 # Datenmodell
-# -------------------------
+
 
 # Datenklasse für einen Vertrag (eine Zeile in der contracts.txt)
 @dataclass
@@ -33,26 +33,27 @@ class Vertrag:
     monate: int            # Anzahl Monate
 
 
-# -------------------------
-# Mathe / Berechnung
-# -------------------------
 
-# Umrechnung Jahreszins -> Monatszins
+# Mathe / Berechnung
+
+
+# Umrechnung Jahreszins -> Monatszins: damit Monatsrechnung konsistent ist
 def monatszins(jahreszins: float) -> float:
     # i = r / 12 (vereinfachtes Modell)
     return jahreszins / 12.0
 
 
-# Update-Formel: Wert nach einem Monat
+# Update-Formel: Wert nach einem Monat:
 def folgewert(v_t: float, beitrag: float, kosten: float, i: float) -> float:
     # Nettozufluss pro Monat
+    # Kosten = Gebühren Verwaltung, Depot, Risiko usw.
     netto = beitrag - kosten
 
-    # V_{t+1} = V_t * (1+i) + netto
+    
     return v_t * (1.0 + i) + netto
 
 
-# Zeitreihe (Monat 1..N) berechnen
+# Zeitreihe / Herz  (Monat 1..N) berechnen: Verlauf jeden Monat wird berechnet  
 def berechne_zeitplan(v: Vertrag):
     i = monatszins(v.jahreszins)
     wert = v.startbetrag
@@ -66,20 +67,25 @@ def berechne_zeitplan(v: Vertrag):
     if v.monatsbeitrag < 0 or v.monatskosten < 0:
         raise ValueError("Beitrag/Kosten dürfen nicht negativ sein.")
 
+    # Schleife von 1 bis v.monate
     for m in range(1, v.monate + 1):
+        # Wert ehemals Startbetrag wird zu folgewert bestehend aus:
+        # aktuellem Wert + Monatsbeitrag - Monatskosten + Zinsen (i)
         wert = folgewert(wert, v.monatsbeitrag, v.monatskosten, i)
 
         if wert < 0:
             raise ValueError(f"Negativer Vertragswert bei Vertrag {v.vertragsnr} (Monat {m}).")
-
+        
+        # Liste Zeitplan bekommt über append Tupel angehängt
+        # bps.: (2, 500.00) 
         zeitplan.append((m, round(wert, 2)))
 
     return zeitplan
 
 
-# -------------------------
+
 # Import / Export
-# -------------------------
+
 
 # Verträge aus TXT-Datei lesen
 def import_vertraege_txt(path: Path):
@@ -87,7 +93,7 @@ def import_vertraege_txt(path: Path):
     expected = ["vertragsnr", "kundenname", "jahreszins", "monatsbeitrag", "monatskosten", "startbetrag", "monate"]
     vertraege = []
 
-    # utf-8-sig ist robust gegen UTF-8 BOM
+    # utf-8-sig
     with path.open("r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f, delimiter=";")
 
@@ -164,9 +170,9 @@ def export_ergebnisse(vertraege, out_dir: Path):
     return results_path, letters_dir
 
 
-# -------------------------
+
 # GUI
-# -------------------------
+
 
 class ZurichApp(tk.Tk):
     def __init__(self):
